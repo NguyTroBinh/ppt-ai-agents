@@ -6,11 +6,7 @@ verifying their quality, and outputting spoken narration speaker notes.
 """
 
 from agents import Agent
-
 from ..prompts.loader import PromptLoader
-from ..tools.file_tools import read_file, write_file, search_icons
-from ..tools.svg_tools import write_svg, quality_check
-
 
 def create_executor_agent(loader: PromptLoader, style: str = "general", output_type=None) -> Agent:
     """Create a new Executor agent instance.

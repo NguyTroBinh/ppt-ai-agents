@@ -200,9 +200,9 @@ def create_pptx_with_native_svg(
     # Check compatibility mode dependencies
     renderer_name, renderer_status, renderer_hint = get_png_renderer_info()
     if not use_native_shapes and use_compat_mode and PNG_RENDERER is None:
-        print("Warning: No PNG rendering library installed, cannot use compatibility mode")
-        print(f"  {renderer_hint}")
-        print("  Will use pure SVG mode (may not display in Office LTSC 2021 and similar versions)")
+        if verbose:
+            print("  PNG fallback renderer unavailable; using pure SVG reference mode")
+            print(f"  {renderer_hint}")
         use_compat_mode = False
 
     # Auto-detect canvas format or get dimensions from viewBox

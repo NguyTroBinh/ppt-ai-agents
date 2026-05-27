@@ -8,6 +8,20 @@ from pathlib import Path
 # Prefer CairoSVG (better quality), fall back to svglib
 PNG_RENDERER: str | None = None
 
+
+def _svglib_renderpm_works() -> bool:
+    """Return whether ReportLab can actually render a tiny drawing to PNG."""
+    try:
+        from reportlab.graphics.shapes import Drawing, Rect
+
+        drawing = Drawing(1, 1)
+        drawing.add(Rect(0, 0, 1, 1))
+        renderPM.drawToString(drawing, fmt="PNG")
+        return True
+    except Exception:
+        return False
+
+
 try:
     import cairosvg
     PNG_RENDERER = 'cairosvg'
@@ -15,7 +29,8 @@ except (ImportError, OSError):
     try:
         from svglib.svglib import svg2rlg
         from reportlab.graphics import renderPM
-        PNG_RENDERER = 'svglib'
+        if _svglib_renderpm_works():
+            PNG_RENDERER = 'svglib'
     except (ImportError, OSError):
         pass
 
@@ -33,7 +48,7 @@ def get_png_renderer_info() -> tuple[str | None, str, str | None]:
                 'Install cairosvg for better results: pip install cairosvg')
     else:
         return (None, '(not installed)',
-                'Install via: pip install cairosvg or pip install svglib reportlab')
+                'Install cairosvg, or install svglib/reportlab with a working renderPM backend')
 
 
 def convert_svg_to_png(

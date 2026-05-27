@@ -91,7 +91,7 @@ async def main_async():
     try:
         success = await orchestrator.run_to_strategist()
         if success:
-            print("\n🎉 Phase 2 Completed Successfully!")
+            print("\nPhase 2 (Planning & Specs) completed successfully.")
             print(f"Design Specification:  {state.design_spec_path}")
             print(f"Execution Lock:        {state.spec_lock_path}")
             print("=" * 80)

@@ -1,11 +1,5 @@
 """
 Pipeline Orchestrator driving the PPT generation phases.
-
-Coordinates:
-- Phase 1: Source Content Conversion (PDF/Word/etc. to Markdown)
-- Phase 2: Project Initialization (project_manager.py init & import-sources)
-- Phase 3: Template Setup (conditional opt-in templates)
-- Phase 4: Strategist Agent (Eight Confirmations + design_spec.md / spec_lock.md creation)
 """
 
 import os
