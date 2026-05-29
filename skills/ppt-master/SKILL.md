@@ -4,7 +4,7 @@ description: >
   AI-driven multi-format SVG content generation system. Converts source documents
   (PDF/DOCX/URL/Markdown) into high-quality SVG pages and exports to PPTX through
   multi-role collaboration. Use when user asks to "create PPT", "make presentation",
-  "生成PPT", "做PPT", "制作演示文稿", or mentions "ppt-master".
+  "Tạo PPT", "Làm PPT", "Tạo bản trình bày", or mentions "ppt-master".
 ---
 
 # PPT Master Skill
@@ -30,7 +30,7 @@ description: >
 > [!IMPORTANT]
 > ## 🌐 Language & Communication Rule
 >
-> - **Response language**: match the user's input and source materials. Explicit user override (e.g., "请用英文回答") takes precedence.
+> - **Response language**: match the user's input and source materials. Explicit user override (e.g., "Hãy trả lời bằng tiếng Việt") takes precedence.
 > - **Template format**: `design_spec.md` MUST follow its original English template structure (section headings, field names) regardless of conversation language. Content values may be in the user's language.
 
 > [!IMPORTANT]
@@ -134,9 +134,9 @@ Import source content (choose based on the situation):
 
 **Template flow is opt-in.** Enter it only when an explicit trigger appears in the user's prior messages:
 
-1. Names a specific template (e.g., "用 mckinsey 模板" / "use the academic_defense template")
-2. Names a style / brand reference that maps to a template (e.g., "McKinsey 那种" / "Google style" / "学术答辩样式")
-3. Asks what templates exist (e.g., "有哪些模板可以用")
+1. Names a specific template (e.g., "use the mckinsey template" / "use the academic_defense template")
+2. Names a style / brand reference that maps to a template (e.g., "McKinsey style" / "Google style" / "academic defense style")
+3. Asks what templates exist (e.g., "what templates are available")
 
 When triggered: read `${SKILL_DIR}/templates/layouts/layouts_index.json`, resolve the match (or list options for trigger 3), and copy:
 
@@ -332,12 +332,6 @@ python3 ${SKILL_DIR}/scripts/svg_to_pptx.py <project_path>
 - `-a <effect>` — per-element entrance animation. Default `mixed` (auto-vary across the deck). Pass `none` to disable, or pick a specific effect like `fade`. Requires top-level `<g id="...">` groups (already required by Executor).
 - `--animation-trigger {on-click,with-previous,after-previous}` — Start mode (matches PowerPoint's animation-pane Start dropdown). Default `after-previous` (click-free cascade; pace via `--animation-stagger`). Use `on-click` for presenter-paced reveals, or `with-previous` for all-at-once.
 - `--auto-advance <seconds>` — kiosk-style auto-play.
-
-**Optional recorded narration** (only when the user asks for narrated/video export):
-
-Run the standalone [`generate-audio`](workflows/generate-audio.md) workflow. The AI picks a narration backend (`edge` by default, or a configured cloud provider such as ElevenLabs / MiniMax / Qwen / CosyVoice for high-quality or cloned voices), asks the user once (backend + voice + rate/settings + embed-or-not, all with recommended values), then executes `notes_to_audio.py` and (if chosen) re-exports the PPTX with `--recorded-narration audio`.
-
-Do NOT call `notes_to_audio.py` directly without going through the workflow — `--voice` / `--voice-id` is required and the workflow produces the locale/provider-aware recommendation that makes the choice meaningful.
 
 Full effect list, anchor logic, and limits: [`references/animations.md`](references/animations.md).
 

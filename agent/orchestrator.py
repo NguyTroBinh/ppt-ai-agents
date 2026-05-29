@@ -42,14 +42,10 @@ class PipelineOrchestrator:
         Returns:
             True if strategist phase completed and specs generated, False otherwise.
         """
-        print("Starting PPT Master Pipeline Orchestrator...")
-        
-        # Step 1: Source processing
-        print("\n--- [Step 1: Source Content Processing] ---")
+        # Phase 1: Source processing
         converted_mds = self._process_sources()
         
-        # Step 2: Project Initialization
-        print("\n--- [Step 2: Project Initialization] ---")
+        # Phase 2: Project Initialization
         project_name = self.state.source_files[0] if self.state.source_files else "presentation"
         # Convert path/filename to safe name
         project_name = Path(project_name).stem
@@ -62,12 +58,10 @@ class PipelineOrchestrator:
         if converted_mds:
             self._import_converted_sources(converted_mds)
 
-        # Step 3: Template Setup
-        print("\n--- [Step 3: Template Option] ---")
+        # Phase 3: Template Setup
         self._setup_template()
 
-        # Step 4: Strategist Agent
-        print("\n--- [Step 4: Strategist Phase] ---")
+        # Phase 4: Strategist Agent
         success = await self._run_strategist()
         return success
 
@@ -79,7 +73,6 @@ class PipelineOrchestrator:
         """
         converted_paths = []
         if not self.state.source_files:
-            print("No external source files specified. Proceeding with user-provided text/conversation context.")
             return converted_paths
 
         from .tools.source_tools import run_convert_pdf, run_convert_docx, run_convert_excel, run_convert_pptx, run_convert_web
@@ -89,10 +82,7 @@ class PipelineOrchestrator:
             
             # If it's a URL
             if file_str.startswith(("http://", "https://")):
-                print(f"Converting web source: {file_str} ...")
                 output = run_convert_web(file_str)
-                print(output)
-                # Parse markdown path from stdout if any, or search project
                 continue
                 
             if not file_path.exists():
@@ -101,39 +91,29 @@ class PipelineOrchestrator:
  
             suffix = file_path.suffix.lower()
             if suffix in {".md", ".markdown", ".txt"}:
-                print(f"Source file {file_path.name} is already Markdown/Text. Ready for import.")
                 converted_paths.append(str(file_path))
             elif suffix == ".pdf":
-                print(f"Converting PDF: {file_path.name} ...")
                 output = run_convert_pdf(str(file_path))
-                print(output)
-                # Converted md will be generated in the same directory by pdf_to_md
                 md_path = file_path.with_suffix(".md")
                 if md_path.exists():
                     converted_paths.append(str(md_path))
             elif suffix in {".docx", ".doc", ".odt", ".epub", ".html", ".htm"}:
-                print(f"Converting Document: {file_path.name} ...")
                 output = run_convert_docx(str(file_path))
-                print(output)
                 md_path = file_path.with_suffix(".md")
                 if md_path.exists():
                     converted_paths.append(str(md_path))
             elif suffix in {".xlsx", ".xlsm"}:
-                print(f"Converting Excel: {file_path.name} ...")
                 output = run_convert_excel(str(file_path))
-                print(output)
                 md_path = file_path.with_suffix(".md")
                 if md_path.exists():
                     converted_paths.append(str(md_path))
             elif suffix in {".pptx", ".ppt"}:
-                print(f"Converting PowerPoint: {file_path.name} ...")
                 output = run_convert_pptx(str(file_path))
-                print(output)
                 md_path = file_path.with_suffix(".md")
                 if md_path.exists():
                     converted_paths.append(str(md_path))
             else:
-                print(f"Unsupported suffix for auto-conversion: {suffix}. Importing file as-is.")
+                print(f"WARN: Unsupported suffix for auto-conversion: {suffix}. Importing file as-is.")
                 converted_paths.append(str(file_path))
  
         return converted_paths
@@ -142,9 +122,7 @@ class PipelineOrchestrator:
         """Create project directory structures."""
         from .tools.project_tools import run_init_project
         
-        print(f"Initializing project '{project_name}' with format '{self.state.canvas_format}'...")
         output = run_init_project(project_name, self.state.canvas_format)
-        print(output)
         
         # Parse output for the project path or calculate it
         # Format of name: project_name_format_date
@@ -161,33 +139,29 @@ class PipelineOrchestrator:
                 project_path = matches[-1]
                 
         self.state.project_path = project_path
-        print(f"Project state path set to: {self.state.project_path}")
  
     def _import_converted_sources(self, source_files: List[str]):
         """Import converted files into the project structure."""
         from .tools.project_tools import run_import_sources
-        print(f"Importing source files to project sources directory...")
         output = run_import_sources(str(self.state.project_path), source_files)
-        print(output)
 
     def _setup_template(self):
         """Handle conditional template flow (Opt-in)."""
         template_trigger = None
         
-        # 1. Search in user preferences or text trigger
+        # Search in user preferences or text trigger
         user_input_str = (self.state.user_text or "").lower()
         
         # List of template folder names
         templates_index_path = self.config.templates_dir / "layouts" / "layouts_index.json"
         if not templates_index_path.exists():
-            print("layouts_index.json not found. Proceeding with default free-design.")
             return
 
         try:
             with open(templates_index_path, "r", encoding="utf-8") as f:
                 layouts_index = json.load(f)
         except Exception as e:
-            print(f"Error loading template index: {e}. Skipping template options.")
+            print(f"WARN: Error loading template index: {e}. Skipping template options.")
             return
 
         # Check triggers
@@ -205,7 +179,7 @@ class PipelineOrchestrator:
                     break
         
         # Check if user explicitly asked for list of templates
-        list_triggers = ["有哪些模板", "有哪些 style", "list templates", "what templates"]
+        list_triggers = ["available templates", "available styles", "list templates", "what templates"]
         if any(lt in user_input_str for lt in list_triggers):
             print("\nAvailable Templates:")
             for name, info in layouts_index.items():
@@ -230,14 +204,10 @@ class PipelineOrchestrator:
                 for file_path in src_layout_dir.glob("*"):
                     if file_path.suffix.lower() == ".svg" or file_path.name == "design_spec.md":
                         shutil.copy2(file_path, dest_template_dir / file_path.name)
-                        print(f"  Copied layout template: {file_path.name}")
                     elif file_path.suffix.lower() in {".png", ".jpg", ".jpeg"}:
                         shutil.copy2(file_path, dest_images_dir / file_path.name)
-                        print(f"  Copied layout image asset: {file_path.name}")
             else:
                 print(f"WARN: Template source directory '{src_layout_dir}' does not exist.")
-        else:
-            print("Using default free design flow (no template trigger found).")
 
     async def _run_strategist(self) -> bool:
         """Run the Strategist Agent loop with Eight Confirmations (BLOCKING on CLI)."""
@@ -295,7 +265,6 @@ class PipelineOrchestrator:
             )
         )
 
-        print("Executing Strategist Agent (initial planning)...")
         # Run agent loop
         result = await Runner.run(
             agent, 
@@ -319,7 +288,6 @@ class PipelineOrchestrator:
         ).strip()
         
         if user_input:
-            print("\nUpdating planning spec with your feedback...")
             feedback_prompt = (
                 f"You are still working on the same source document and project.\n"
                 f"Project path: {self.state.project_path}\n"
@@ -345,7 +313,6 @@ class PipelineOrchestrator:
             print("\nFinal Spec Proposal:")
             print(result.final_output)
         else:
-            print("\nConfirmations accepted! Finalizing design spec...")
             finalize_prompt = (
                 f"You are still working on the same source document and project.\n"
                 f"Project path: {self.state.project_path}\n"
@@ -367,18 +334,16 @@ class PipelineOrchestrator:
                 "`design_spec_md` and `spec_lock_md`."
             )
             result = await self._run_strategist_finalization(finalize_prompt, run_config)
-            print(result.final_output)
 
         # Fallback: try to extract specs from text if they don't exist yet
         if not (self.state.design_spec_path.exists() and self.state.spec_lock_path.exists()):
-            print("\nSpec files not found. Attempting intelligent fallback extraction from agent output text...")
+            print("\nWARN: Spec files not found. Attempting fallback extraction from agent output text...")
             self._extract_specs_fallback(str(result.final_output))
 
         # Check if the output files exist
         if self.state.design_spec_path.exists() and self.state.spec_lock_path.exists():
             self._enforce_local_image_policy()
             self._validate_and_normalize_resource_refs()
-            print(f"\nSUCCESS: 'design_spec.md' and 'spec_lock.md' generated successfully.")
             self.state.current_phase = "strategist_done"
             return True
         else:
@@ -422,7 +387,7 @@ class PipelineOrchestrator:
             )
 
         if not self._write_structured_specs(result.final_output):
-            print("\nStructured spec payload was not usable. Falling back to legacy text extraction...")
+            print("\nWARN: Structured spec payload was not usable. Falling back to legacy text extraction...")
             self._extract_specs_fallback(str(result.final_output))
 
         return result
@@ -449,11 +414,6 @@ class PipelineOrchestrator:
         self.state.design_spec_path.write_text(design_spec.strip() + "\n", encoding="utf-8")
         self.state.spec_lock_path.write_text(spec_lock.strip() + "\n", encoding="utf-8")
         self._write_slide_outline(slide_outline)
-        print(
-            "  [Structured Output] Saved design_spec.md and spec_lock.md "
-            f"({len(design_spec)} / {len(spec_lock)} characters); "
-            f"slide_outline.json ({len(slide_outline)} slides)"
-        )
         return True
 
     def _write_slide_outline(self, slide_outline: list):
@@ -565,10 +525,8 @@ class PipelineOrchestrator:
             content = self._sanitize_spec_text(raw_content.strip())
             if filename == "design_spec.md":
                 self.state.design_spec_path.write_text(content, encoding="utf-8")
-                print(f"  [Fallback] Saved design_spec.md from file payload ({len(content)} characters)")
             elif filename == "spec_lock.md":
                 self.state.spec_lock_path.write_text(content, encoding="utf-8")
-                print(f"  [Fallback] Saved spec_lock.md from file payload ({len(content)} characters)")
 
         if self.state.design_spec_path.exists() and self.state.spec_lock_path.exists():
             return
@@ -624,12 +582,10 @@ class PipelineOrchestrator:
         if spec_content:
             spec_content = self._sanitize_spec_text(spec_content)
             self.state.design_spec_path.write_text(spec_content, encoding="utf-8")
-            print(f"  [Fallback] Successfully extracted and saved design_spec.md ({len(spec_content)} characters)")
             
         if lock_content:
             lock_content = self._sanitize_spec_text(lock_content)
             self.state.spec_lock_path.write_text(lock_content, encoding="utf-8")
-            print(f"  [Fallback] Successfully extracted and saved spec_lock.md ({len(lock_content)} characters)")
 
     def _parse_spec_lock(self, content: str) -> dict:
         """Parse spec_lock.md into structured dict of sections."""
@@ -836,8 +792,6 @@ class PipelineOrchestrator:
         for candidate in candidates:
             replacement = aliases.get(candidate)
             if replacement and replacement in valid_keys:
-                if candidate != replacement:
-                    print(f"  [Spec Sanitize] Replaced chart alias {candidate} -> {replacement}")
                 return replacement
 
         keyword_rules = [
@@ -898,7 +852,6 @@ class PipelineOrchestrator:
             after = self._sanitize_spec_text(before)
             if after != before:
                 path.write_text(after.rstrip() + "\n", encoding="utf-8")
-                print(f"  [Resource Validation] Normalized asset references in {path.name}")
 
         if self.state.project_path:
             outline_path = self.state.project_path / "slide_outline.json"
@@ -1056,7 +1009,6 @@ class PipelineOrchestrator:
         Returns:
             True if all slides generated successfully, False otherwise.
         """
-        print("\n=== [Step 5-6: Executor Phase (Windowed SVG Generation)] ===")
         if not self.state.project_path or not self.state.design_spec_path.exists() or not self.state.spec_lock_path.exists():
             print("ERROR: Design spec or spec lock files missing. Cannot run Executor.")
             return False
@@ -1074,16 +1026,12 @@ class PipelineOrchestrator:
         # Parse sections
         lock_data = self._parse_spec_lock(spec_lock_content)
         slides = self._load_structured_slide_outline()
-        if slides:
-            print(f"Loaded {len(slides)} slides from slide_outline.json.")
-        else:
+        if not slides:
             slides = self._parse_design_spec_outline(design_spec_content)
 
         if not slides:
             print("ERROR: No slides found in design_spec.md §IX. Content Outline.")
             return False
-
-        print(f"Parsed {len(slides)} slides from outline. Starting windowed generation...")
 
         # Detect design style (defaults to general)
         style = "general"
@@ -1106,7 +1054,6 @@ class PipelineOrchestrator:
             window_slides = slides[w_start:w_end]
             
             slide_nums_str = ", ".join(s['number'] for s in window_slides)
-            print(f"\nProcessing Slide Window: [{slide_nums_str}] ...")
 
             # Collect previous 2 SVGs for context
             previous_svgs_content = ""
@@ -1181,7 +1128,6 @@ class PipelineOrchestrator:
                 )
             )
 
-            print(f"Running Executor Agent on slides: {slide_nums_str}...")
             try:
                 result = await Runner.run(
                     agent,
@@ -1201,11 +1147,9 @@ class PipelineOrchestrator:
                     fallback_context,
                     run_config=run_config
                 )
-            print(f"Executor Agent response for window [{slide_nums_str}]:")
-            print(result.final_output)
 
             if not self._write_structured_window_outputs(result.final_output, window_slides, output_language):
-                print("Structured executor payload was not usable. Falling back to legacy block extraction...")
+                print("WARN: Structured executor payload was not usable. Falling back to legacy block extraction...")
                 self._extract_window_outputs(str(result.final_output), window_slides, output_language)
 
             # Verification of written SVGs in this window
@@ -1214,9 +1158,7 @@ class PipelineOrchestrator:
                 # Find matching SVG file
                 safe_num = slide['number'].zfill(2)
                 matches = list(svg_output_dir.glob(f"{safe_num}_*.svg"))
-                if matches:
-                    print(f"  Slide {slide['number']} SVG written: {matches[0].name}")
-                else:
+                if not matches:
                     print(f"  ERROR: Slide {slide['number']} SVG was not found after window extraction.")
                     missing_slides.append(slide["number"])
 
@@ -1225,15 +1167,13 @@ class PipelineOrchestrator:
                 return False
 
         # Post-execution check
-        print("\n--- [Running Final SVG Quality Verification] ---")
         from .tools.svg_tools import run_quality_check
         report = run_quality_check(str(self.state.project_path))
-        print(report)
         if self._quality_report_has_errors(report):
+            print(report)
             print("ERROR: SVG quality verification failed. Stopping before post-processing/export.")
             return False
 
-        print("\nAll executor pages processed.")
         self.state.current_phase = "executor_done"
         return True
 
@@ -1253,6 +1193,24 @@ class PipelineOrchestrator:
                 return True
 
         return False
+
+    @staticmethod
+    def _command_output_has_problem(output: str) -> bool:
+        """Return True when command output contains warning/error signals."""
+        if not output:
+            return False
+        problem_re = re.compile(
+            r"\b(errors?|warnings?|warn|failed|failure|traceback|exception)\b",
+            re.IGNORECASE,
+        )
+        neutral_re = re.compile(
+            r"\b(?:(?:no|0)\s+(?:errors?|warnings?)|(?:errors?|warnings?)\s*:\s*0)\b",
+            re.IGNORECASE,
+        )
+        return any(
+            problem_re.search(line) and not neutral_re.search(line)
+            for line in output.splitlines()
+        )
 
     def _write_structured_window_outputs(self, payload, window_slides: List[dict], output_language: str) -> bool:
         """Persist executor output when it matches the structured contract."""
@@ -1292,7 +1250,8 @@ class PipelineOrchestrator:
             filename = f"{safe_num}_{slide['key']}.svg"
             from .tools.svg_tools import run_write_svg
             msg = run_write_svg(filename, svg_content, str(self.state.project_path))
-            print(f"  [Structured SVG] {msg}")
+            if self._command_output_has_problem(msg):
+                print(f"  {msg}")
 
             notes_content = item.get("speaker_notes_md")
             if not isinstance(notes_content, str) or not notes_content.strip():
@@ -1303,7 +1262,6 @@ class PipelineOrchestrator:
             notes_dir.mkdir(parents=True, exist_ok=True)
             notes_path = notes_dir / f"{safe_num}_{slide['key']}.md"
             notes_path.write_text(notes_content.strip() + "\n", encoding="utf-8")
-            print(f"  [Structured Notes] Saved notes to: {notes_path.name}")
 
         return wrote_all
 
@@ -1339,7 +1297,8 @@ class PipelineOrchestrator:
                 filename = f"{safe_num}_{slide['key']}.svg"
                 from .tools.svg_tools import run_write_svg
                 msg = run_write_svg(filename, svg_content, str(self.state.project_path))
-                print(f"  [Window SVG] {msg}")
+                if self._command_output_has_problem(msg):
+                    print(f"  {msg}")
 
             notes_content = self._select_notes_for_slide(notes_blocks, text, slide, idx)
             if not notes_content:
@@ -1351,7 +1310,6 @@ class PipelineOrchestrator:
             safe_num = slide["number"].zfill(2)
             notes_path = notes_dir / f"{safe_num}_{slide['key']}.md"
             notes_path.write_text(notes_content.strip() + "\n", encoding="utf-8")
-            print(f"  [Window Notes] Saved notes to: {notes_path.name}")
 
     @staticmethod
     def _extract_svg_blocks(text: str) -> List[str]:
@@ -1384,11 +1342,11 @@ class PipelineOrchestrator:
             try:
                 candidate.relative_to(project_root)
             except ValueError:
-                print(f"  [SVG Sanitize] Removed image outside project: {href}")
+                print(f"WARN: Removed image outside project from SVG: {href}")
                 return ""
 
             if not candidate.exists():
-                print(f"  [SVG Sanitize] Removed missing image reference: {href}")
+                print(f"WARN: Removed missing image reference from SVG: {href}")
                 return ""
             return tag
 
@@ -1459,7 +1417,7 @@ class PipelineOrchestrator:
                 return icon_ref
 
             replacement = self._replacement_icon(icon_ref)
-            print(f"  [Icon Sanitize] Replaced missing icon {icon_ref} -> {replacement}")
+            print(f"WARN: Replaced missing icon {icon_ref} -> {replacement}")
             return replacement
 
         libraries = "chunk-filled|tabler-filled|tabler-outline|phosphor-duotone|simple-icons"
@@ -1585,30 +1543,26 @@ class PipelineOrchestrator:
         Returns:
             True if export completed successfully and PPTX exists, False otherwise.
         """
-        print("\n--- [Phase 7: Post-Processing & PPTX Export] ---")
         if not self.state.project_path:
             print("ERROR: Project path is not set in state.")
             return False
 
         # Step 1: Finalize SVGs
-        print("Running SVG Finalizer...")
         from .tools.export_tools import run_finalize_svg
         finalize_output = run_finalize_svg(str(self.state.project_path))
-        print(finalize_output)
+        if self._command_output_has_problem(finalize_output):
+            print(finalize_output)
 
         # Step 2: Convert to PPTX
-        print("Converting Finalized SVGs to PowerPoint (PPTX)...")
         from .tools.export_tools import run_svg_to_pptx
         pptx_output = run_svg_to_pptx(str(self.state.project_path), source="final")
-        print(pptx_output)
+        if self._command_output_has_problem(pptx_output):
+            print(pptx_output)
 
         # Check export directory
         export_dir = self.state.project_path / "exports"
         pptx_files = list(export_dir.glob("*.pptx"))
         if pptx_files:
-            print("SUCCESS: PPTX presentation successfully generated.")
-            for f in pptx_files:
-                print(f"  Exported PPTX: {f.name}")
             self.state.current_phase = "export_done"
             return True
         else:
