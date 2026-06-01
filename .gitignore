@@ -9,3 +9,4 @@ __pycache__/
 .codex/
 
 projects/
+api_storage/

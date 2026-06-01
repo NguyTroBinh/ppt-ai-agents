@@ -36,34 +36,57 @@ class PipelineOrchestrator:
         set_default_openai_api("chat_completions")
         set_tracing_disabled(True)
 
-    async def run_to_strategist(self) -> bool:
-        """Run Phases 1-4 (up to Strategist completion).
-        
-        Returns:
-            True if strategist phase completed and specs generated, False otherwise.
-        """
+    async def run_to_eight_confirmations(self, interactive_templates: bool = False) -> Optional[str]:
+        """Run setup and return the Strategist Eight Confirmations proposal."""
         # Phase 1: Source processing
         converted_mds = self._process_sources()
         
         # Phase 2: Project Initialization
-        project_name = self.state.source_files[0] if self.state.source_files else "presentation"
-        # Convert path/filename to safe name
-        project_name = Path(project_name).stem
-        project_name = "".join(c if c.isalnum() else "_" for c in project_name).strip("_")
-        if not project_name:
-            project_name = "presentation"
-
+        project_name = self._project_name_from_state()
         self._init_project(project_name)
         
         if converted_mds:
             self._import_converted_sources(converted_mds)
 
         # Phase 3: Template Setup
-        self._setup_template()
+        self._setup_template(interactive=interactive_templates)
 
         # Phase 4: Strategist Agent
-        success = await self._run_strategist()
-        return success
+        proposal = await self._run_strategist_proposal()
+        if proposal:
+            self.state.eight_confirmation = proposal
+            self.state.current_phase = "awaiting_confirmation"
+        return proposal
+
+    async def run_to_strategist(self) -> bool:
+        """Run Phases 1-4 in CLI mode, including blocking confirmation input.
+        
+        Returns:
+            True if strategist phase completed and specs generated, False otherwise.
+        """
+        proposal = await self.run_to_eight_confirmations(interactive_templates=True)
+        if not proposal:
+            return False
+
+        print("\n" + "=" * 80)
+        print("STRATEGIST AGENT PROPOSAL & EIGHT CONFIRMATIONS")
+        print("=" * 80)
+        print(proposal)
+        print("=" * 80)
+        
+        user_input = input(
+            "\nPlease review the proposed confirmations above.\n"
+            "   - Press Enter to accept as-is.\n"
+            "   - Or describe modifications (e.g. 'Page count 6 pages, style Consulting, accent color #FF5733'):\n"
+            "   Your feedback: "
+        ).strip()
+        return await self.confirm_eight_confirmations(user_input, print_final_proposal=bool(user_input))
+
+    def _project_name_from_state(self) -> str:
+        project_name = self.state.source_files[0] if self.state.source_files else "presentation"
+        project_name = Path(project_name).stem
+        project_name = "".join(c if c.isalnum() else "_" for c in project_name).strip("_")
+        return project_name or "presentation"
 
     def _process_sources(self) -> List[str]:
         """Convert input non-Markdown files to Markdown.
@@ -145,7 +168,7 @@ class PipelineOrchestrator:
         from .tools.project_tools import run_import_sources
         output = run_import_sources(str(self.state.project_path), source_files)
 
-    def _setup_template(self):
+    def _setup_template(self, interactive: bool = False):
         """Handle conditional template flow (Opt-in)."""
         template_trigger = None
         
@@ -185,13 +208,13 @@ class PipelineOrchestrator:
             for name, info in layouts_index.items():
                 print(f"- {name}: {info.get('description', '')} (Keywords: {', '.join(info.get('keywords', []))})")
             
-            # Blocking query in CLI
-            sel = input("\nEnter template name to use (leave empty for default free design): ").strip()
-            if sel in layouts_index:
-                template_trigger = sel
+            if interactive:
+                sel = input("\nEnter template name to use (leave empty for default free design): ").strip()
+                if sel in layouts_index:
+                    template_trigger = sel
 
         if template_trigger:
-            print(f"Template opt-in triggered: '{template_trigger}'")
+            print(f"Template to use: '{template_trigger}'")
             self.state.template_name = template_trigger
             
             # Copy template files
@@ -209,30 +232,12 @@ class PipelineOrchestrator:
             else:
                 print(f"WARN: Template source directory '{src_layout_dir}' does not exist.")
 
-    async def _run_strategist(self) -> bool:
-        """Run the Strategist Agent loop with Eight Confirmations (BLOCKING on CLI)."""
+    async def _run_strategist_proposal(self) -> Optional[str]:
+        """Ask Strategist for the Eight Confirmations proposal only."""
         agent = create_strategist_agent(self.loader)
-        
-        # Read the imported sources to provide content context
-        sources_content = ""
-        sources_dir = self.state.sources_dir
-        if sources_dir and sources_dir.exists():
-            md_files = list(sources_dir.glob("*.md")) + list(sources_dir.glob("*.markdown"))
-            for md_file in md_files:
-                sources_content += f"\n\n--- Source: {md_file.name} ---\n"
-                sources_content += md_file.read_text(encoding="utf-8")
-        
-        if not sources_content and self.state.user_text:
-            sources_content = self.state.user_text
-
+        sources_content = self._load_sources_content()
         output_language = self._detect_output_language(sources_content)
-
-        # Analyze existing images if present
-        image_analysis = ""
-        images_dir = self.state.images_dir
-        if images_dir and images_dir.exists():
-            from .tools.image_tools import run_analyze_images
-            image_analysis = run_analyze_images(str(images_dir))
+        image_analysis = self._analyze_existing_images()
 
         # Build initial strategist prompt
         context = (
@@ -257,43 +262,40 @@ class PipelineOrchestrator:
             "Do not draft final design_spec.md or spec_lock.md yet."
         )
 
-        run_config = RunConfig(
-            model=self.config.model,
-            model_settings=ModelSettings(
-                temperature=self.config.temperature,
-                max_tokens=self.config.max_tokens
-            )
-        )
-
-        # Run agent loop
         result = await Runner.run(
             agent, 
             context,
-            run_config=run_config
+            run_config=self._build_run_config()
         )
-        
-        # BLOCKING: CLI Eight Confirmations Review
-        print("\n" + "=" * 80)
-        print("STRATEGIST AGENT PROPOSAL & EIGHT CONFIRMATIONS")
-        print("=" * 80)
-        print(result.final_output)
-        print("=" * 80)
-        
-        # Prompt user
-        user_input = input(
-            "\nPlease review the proposed confirmations above.\n"
-            "   - Press Enter to accept as-is.\n"
-            "   - Or describe modifications (e.g. 'Page count 6 pages, style Consulting, accent color #FF5733'):\n"
-            "   Your feedback: "
-        ).strip()
-        
-        if user_input:
+        return str(result.final_output).strip()
+
+    async def confirm_eight_confirmations(
+        self,
+        confirmation_text: str = "",
+        print_final_proposal: bool = False,
+    ) -> bool:
+        """Finalize strategist specs from an accepted or edited Eight Confirmations proposal."""
+        if not self.state.project_path:
+            print("ERROR: Project path is not set. Cannot finalize strategist phase.")
+            return False
+        if not self.state.eight_confirmation:
+            print("ERROR: Eight Confirmations proposal is missing. Cannot finalize strategist phase.")
+            return False
+
+        sources_content = self._load_sources_content()
+        output_language = self._detect_output_language(sources_content)
+        run_config = self._build_run_config()
+        user_input = (confirmation_text or "").strip()
+        accepted_values = {"", "accept", "accepted", "confirm", "confirmed", "ok", "okay", "yes", "approve", "approved"}
+        is_acceptance = user_input.lower() in accepted_values
+
+        if not is_acceptance:
             feedback_prompt = (
                 f"You are still working on the same source document and project.\n"
                 f"Project path: {self.state.project_path}\n"
                 f"Default output language: {output_language}\n\n"
                 f"=== Source Document Content ===\n{sources_content}\n\n"
-                f"=== Accepted/Previous Strategist Proposal ===\n{result.final_output}\n\n"
+                f"=== Accepted/Previous Strategist Proposal ===\n{self.state.eight_confirmation}\n\n"
                 f"The user has reviewed your proposal and provided the following feedback:\n"
                 f"'{user_input}'\n\n"
                 f"Please update the design specification according to this feedback. "
@@ -310,15 +312,16 @@ class PipelineOrchestrator:
                 "`design_spec_md` and `spec_lock_md`."
             )
             result = await self._run_strategist_finalization(feedback_prompt, run_config)
-            print("\nFinal Spec Proposal:")
-            print(result.final_output)
+            if print_final_proposal:
+                print("\nFinal Spec Proposal:")
+                print(result.final_output)
         else:
             finalize_prompt = (
                 f"You are still working on the same source document and project.\n"
                 f"Project path: {self.state.project_path}\n"
                 f"Default output language: {output_language}\n\n"
                 f"=== Source Document Content ===\n{sources_content}\n\n"
-                f"=== Accepted Strategist Proposal ===\n{result.final_output}\n\n"
+                f"=== Accepted Strategist Proposal ===\n{self.state.eight_confirmation}\n\n"
                 f"The user has accepted your confirmations. "
                 f"Please finalize and write 'design_spec.md' and 'spec_lock.md' files "
                 f"for project path: '{self.state.project_path}'. "
@@ -349,6 +352,36 @@ class PipelineOrchestrator:
         else:
             print(f"\nERROR: Design spec files were not generated or were saved in the wrong location.")
             return False
+
+    def _load_sources_content(self) -> str:
+        """Read imported Markdown sources or fall back to direct user text."""
+        sources_content = ""
+        sources_dir = self.state.sources_dir
+        if sources_dir and sources_dir.exists():
+            md_files = list(sources_dir.glob("*.md")) + list(sources_dir.glob("*.markdown"))
+            for md_file in md_files:
+                sources_content += f"\n\n--- Source: {md_file.name} ---\n"
+                sources_content += md_file.read_text(encoding="utf-8")
+
+        if not sources_content and self.state.user_text:
+            sources_content = self.state.user_text
+        return sources_content
+
+    def _analyze_existing_images(self) -> str:
+        images_dir = self.state.images_dir
+        if images_dir and images_dir.exists():
+            from .tools.image_tools import run_analyze_images
+            return run_analyze_images(str(images_dir))
+        return ""
+
+    def _build_run_config(self) -> RunConfig:
+        return RunConfig(
+            model=self.config.model,
+            model_settings=ModelSettings(
+                temperature=self.config.temperature,
+                max_tokens=self.config.max_tokens
+            )
+        )
 
     async def _run_strategist_finalization(self, prompt: str, run_config: RunConfig):
         """Run strategist finalization through the structured output contract."""

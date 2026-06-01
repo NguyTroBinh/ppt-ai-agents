@@ -19,6 +19,7 @@ class ProjectState:
     user_text: Optional[str] = None
     canvas_format: str = "ppt169"
     template_name: Optional[str] = None
+    eight_confirmation: Optional[str] = None
 
     # --- Paths (set during Phase 2) ---
     project_path: Optional[Path] = None
